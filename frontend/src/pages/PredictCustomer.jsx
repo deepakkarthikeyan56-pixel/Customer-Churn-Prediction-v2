@@ -20,7 +20,8 @@ import {
   Wifi,
   Phone,
   Shuffle,
-  Zap
+  Zap,
+  Sliders
 } from 'lucide-react';
 
 export const PredictCustomer = ({ onNavigate }) => {
@@ -37,7 +38,8 @@ export const PredictCustomer = ({ onNavigate }) => {
   // Built-in presets with distinct probability outcomes
   const defaultPresets = {
     extremeHighRisk: {
-      label: 'Extreme High Churn Risk (Month-to-month, High Bill, No Support)',
+      label: '1. High Risk Churner (Month-to-month, High Bill, No Support)',
+      churnProbEstimate: '85% - 98%',
       data: {
         gender: 'Female',
         SeniorCitizen: 1,
@@ -61,7 +63,8 @@ export const PredictCustomer = ({ onNavigate }) => {
       }
     },
     loyalLowRisk: {
-      label: 'Loyal Low Risk Customer (2-Year Contract, 6+ Years, Tech Support)',
+      label: '2. Loyal Low Risk Customer (2-Year Contract, 6+ Years, Full Support)',
+      churnProbEstimate: '5% - 15%',
       data: {
         gender: 'Male',
         SeniorCitizen: 0,
@@ -85,7 +88,8 @@ export const PredictCustomer = ({ onNavigate }) => {
       }
     },
     moderateRisk: {
-      label: 'Moderate / Medium Risk (1-Year Contract, Moderate Tenure)',
+      label: '3. Moderate / Medium Risk (1-Year Contract, 24 Mos Tenure)',
+      churnProbEstimate: '35% - 50%',
       data: {
         gender: 'Female',
         SeniorCitizen: 0,
@@ -109,7 +113,8 @@ export const PredictCustomer = ({ onNavigate }) => {
       }
     },
     budgetLoyal: {
-      label: 'Budget Customer (No Internet, Phone Only, Long-term)',
+      label: '4. Budget Customer (Phone Only, Long-term)',
+      churnProbEstimate: '8% - 20%',
       data: {
         gender: 'Male',
         SeniorCitizen: 0,
@@ -169,7 +174,6 @@ export const PredictCustomer = ({ onNavigate }) => {
   const handleInputChange = (field, value) => {
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
-      // Auto-calculate TotalCharges when tenure or MonthlyCharges changes
       if (field === 'tenure' || field === 'MonthlyCharges') {
         const t = parseFloat(field === 'tenure' ? value : prev.tenure) || 1;
         const m = parseFloat(field === 'MonthlyCharges' ? value : prev.MonthlyCharges) || 50;
@@ -183,7 +187,7 @@ export const PredictCustomer = ({ onNavigate }) => {
 
   const roundToTwo = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
-  const handleApplyPreset = async (presetKey, autoRun = false) => {
+  const handleApplyPreset = async (presetKey, autoRun = true) => {
     const preset = defaultPresets[presetKey];
     if (!preset) return;
 
@@ -225,7 +229,6 @@ export const PredictCustomer = ({ onNavigate }) => {
       setCustomerIdentifier(sample.customerID || `CUST-DS-${Math.floor(1000 + Math.random() * 9000)}`);
       setPredictionResult(null);
 
-      // Auto-predict for instant feedback
       executePredict(newForm);
     } catch (err) {
       setError('Failed to fetch sample from dataset.');
@@ -300,7 +303,6 @@ export const PredictCustomer = ({ onNavigate }) => {
     );
   }
 
-  // Dynamic Grouping of Features
   const demographicsCols = ['gender', 'SeniorCitizen', 'Partner', 'Dependents'];
   const serviceCols = [
     'PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity',
@@ -314,89 +316,161 @@ export const PredictCustomer = ({ onNavigate }) => {
   const otherCols = activeModelMeta?.feature_columns?.filter((c) => !allKnown.includes(c)) || [];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-white font-heading">
-              Customer Churn Predictor & Explainable AI (XAI)
-            </h2>
-            <p className="text-xs text-slate-400">
-              Active Production Classifier: <strong className="text-emerald-400">{activeModelMeta?.algorithm_name}</strong> (F1-Score: {activeModelMeta?.f1_score}%, ROC-AUC: {activeModelMeta?.roc_auc}%)
-            </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white font-heading">
+            Customer Churn Predictor & Explainable AI (XAI)
+          </h2>
+          <p className="text-xs text-slate-400">
+            Active Production Classifier: <strong className="text-emerald-400">{activeModelMeta?.algorithm_name}</strong> (F1-Score: {activeModelMeta?.f1_score}%, ROC-AUC: {activeModelMeta?.roc_auc}%)
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleResetForm}
+          className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs text-slate-300 hover:text-white transition"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>Reset Form</span>
+        </button>
+      </div>
+
+      {/* 🌟 MEGA 1-CLICK AUTOFILL CONTROL PANEL */}
+      <div className="rounded-2xl border-2 border-indigo-500/50 bg-gradient-to-r from-indigo-950/80 via-slate-900/90 to-blue-950/80 p-5 backdrop-blur-2xl space-y-4 shadow-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-indigo-500/30 pb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-400/20 text-amber-300 font-bold">
+              <Zap className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                ⚡ 1-Click Quick Autofill & Test Presets
+              </h3>
+              <p className="text-[11px] text-indigo-200">
+                Click any preset to instantly populate customer values and calculate churn risk!
+              </p>
+            </div>
           </div>
+          {autofillSource && (
+            <span className="text-xs font-semibold text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 rounded-full truncate max-w-md">
+              ✓ Loaded: {autofillSource}
+            </span>
+          )}
+        </div>
+
+        {/* Action Buttons Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+          {/* 1. High Risk Button */}
           <button
             type="button"
-            onClick={handleResetForm}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:text-white transition"
+            onClick={() => handleApplyPreset('extremeHighRisk', true)}
+            className="flex flex-col items-start p-3 rounded-xl border-2 border-rose-500/50 bg-rose-500/20 hover:bg-rose-500/35 hover:scale-[1.02] transition duration-200 text-left shadow-lg"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Reset</span>
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-extrabold text-rose-300 uppercase flex items-center gap-1">
+                <TrendingUp className="h-3.5 w-3.5" /> High Risk
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-200">
+                ~90% Churn
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">Month-to-month, $110/mo, No tech support</p>
+          </button>
+
+          {/* 2. Loyal Low Risk Button */}
+          <button
+            type="button"
+            onClick={() => handleApplyPreset('loyalLowRisk', true)}
+            className="flex flex-col items-start p-3 rounded-xl border-2 border-emerald-500/50 bg-emerald-500/20 hover:bg-emerald-500/35 hover:scale-[1.02] transition duration-200 text-left shadow-lg"
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-extrabold text-emerald-300 uppercase flex items-center gap-1">
+                <TrendingDown className="h-3.5 w-3.5" /> Loyal Customer
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/30 text-emerald-200">
+                ~8% Churn
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">2-Year Contract, 6+ Yrs, Full support</p>
+          </button>
+
+          {/* 3. Moderate Risk Button */}
+          <button
+            type="button"
+            onClick={() => handleApplyPreset('moderateRisk', true)}
+            className="flex flex-col items-start p-3 rounded-xl border-2 border-amber-500/50 bg-amber-500/20 hover:bg-amber-500/35 hover:scale-[1.02] transition duration-200 text-left shadow-lg"
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-extrabold text-amber-300 uppercase flex items-center gap-1">
+                <Sliders className="h-3.5 w-3.5" /> Moderate Risk
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200">
+                ~40% Churn
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">1-Year Contract, 24 Mos, $75/mo</p>
+          </button>
+
+          {/* 4. Real Churned Row from Dataset */}
+          <button
+            type="button"
+            onClick={() => handleAutofillFromDataset('churn')}
+            className="flex flex-col items-start p-3 rounded-xl border-2 border-indigo-500/50 bg-indigo-500/20 hover:bg-indigo-500/35 hover:scale-[1.02] transition duration-200 text-left shadow-lg"
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-extrabold text-indigo-300 uppercase flex items-center gap-1">
+                <Shuffle className="h-3.5 w-3.5" /> Dataset Churner
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-200">
+                Real Row
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">Random Churned Customer from CSV</p>
+          </button>
+
+          {/* 5. Real Retained Row from Dataset */}
+          <button
+            type="button"
+            onClick={() => handleAutofillFromDataset('loyal')}
+            className="flex flex-col items-start p-3 rounded-xl border-2 border-blue-500/50 bg-blue-500/20 hover:bg-blue-500/35 hover:scale-[1.02] transition duration-200 text-left shadow-lg"
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs font-extrabold text-blue-300 uppercase flex items-center gap-1">
+                <Shuffle className="h-3.5 w-3.5" /> Dataset Retained
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-200">
+                Real Row
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">Random Retained Customer from CSV</p>
           </button>
         </div>
 
-        {/* 1-Click Auto-Fill Bar */}
-        <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/60 via-slate-900/80 to-blue-950/60 p-4 backdrop-blur-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-amber-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
-                1-Click Quick Autofill Profiles:
-              </span>
-            </div>
-            {autofillSource && (
-              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full truncate max-w-sm">
-                Active: {autofillSource}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleApplyPreset('extremeHighRisk', true)}
-              className="flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/30 transition shadow-sm"
-            >
-              <TrendingUp className="h-3.5 w-3.5 text-rose-400" />
-              <span>Autofill High Risk Churner (85-98%)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleApplyPreset('loyalLowRisk', true)}
-              className="flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/30 transition shadow-sm"
-            >
-              <TrendingDown className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Autofill Loyal Customer (5-15%)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleApplyPreset('moderateRisk', true)}
-              className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 transition shadow-sm"
-            >
-              <span>Autofill Moderate Risk (35-50%)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAutofillFromDataset('churn')}
-              className="flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/30 transition shadow-sm"
-            >
-              <Shuffle className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Real Churned Row from Dataset</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAutofillFromDataset('loyal')}
-              className="flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/30 transition shadow-sm"
-            >
-              <Shuffle className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Real Retained Row from Dataset</span>
-            </button>
-          </div>
+        {/* Dropdown Quick Selector */}
+        <div className="flex items-center gap-3 pt-1 text-xs">
+          <span className="text-slate-300 font-semibold shrink-0">Or Select from Preset Dropdown:</span>
+          <select
+            onChange={(e) => {
+              if (e.target.value) {
+                if (e.target.value === 'churn' || e.target.value === 'loyal') {
+                  handleAutofillFromDataset(e.target.value);
+                } else {
+                  handleApplyPreset(e.target.value, true);
+                }
+              }
+            }}
+            className="w-full rounded-xl border border-indigo-500/40 bg-slate-950 px-3 py-2 text-xs font-semibold text-white focus:border-indigo-400 focus:outline-none"
+          >
+            <option value="">-- Choose Customer Profile to Auto-Fill & Test --</option>
+            <option value="extremeHighRisk">🔴 1. High Risk Churner (Month-to-month, High Bill, No Support) &rarr; Predicts ~90% Churn</option>
+            <option value="loyalLowRisk">🟢 2. Loyal Low Risk Customer (2-Year Contract, 6+ Years, Tech Support) &rarr; Predicts ~8% Churn</option>
+            <option value="moderateRisk">🟡 3. Moderate Risk Customer (1-Year Contract, 24 Mos Tenure) &rarr; Predicts ~40% Churn</option>
+            <option value="budgetLoyal">⚪ 4. Budget Phone-Only Customer (Two-Year, Low Cost) &rarr; Predicts ~12% Churn</option>
+            <option value="churn">🎲 5. Real Churned Customer Record directly from Active CSV Dataset</option>
+            <option value="loyal">🎲 6. Real Retained Customer Record directly from Active CSV Dataset</option>
+          </select>
         </div>
       </div>
 

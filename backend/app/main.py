@@ -58,11 +58,11 @@ async def serve_frontend_app(full_path: str):
         
     file_path = os.path.join(FRONTEND_DIST, full_path)
     if os.path.exists(file_path) and os.path.isfile(file_path):
-        return FileResponse(file_path)
+        return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         
     index_file = os.path.join(FRONTEND_DIST, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(index_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         
     return {
         "status": "online",
