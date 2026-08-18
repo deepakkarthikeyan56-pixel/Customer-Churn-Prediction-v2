@@ -12,28 +12,32 @@ from app.ml.evaluate import evaluate_classifier_model
 
 MODEL_REGISTRY = {
     "Logistic Regression": lambda random_state: LogisticRegression(
+        C=1.0,
         max_iter=1000, 
         random_state=random_state,
         class_weight="balanced"
     ),
     "Decision Tree": lambda random_state: DecisionTreeClassifier(
         max_depth=6, 
-        min_samples_split=10, 
+        min_samples_split=8,
+        min_samples_leaf=3,
         random_state=random_state,
         class_weight="balanced"
     ),
     "Random Forest": lambda random_state: RandomForestClassifier(
-        n_estimators=100, 
-        max_depth=10, 
-        min_samples_split=6,
+        n_estimators=150, 
+        max_depth=12, 
+        min_samples_split=4,
+        min_samples_leaf=2,
         random_state=random_state,
         class_weight="balanced",
         n_jobs=-1
     ),
     "Gradient Boosting": lambda random_state: GradientBoostingClassifier(
-        n_estimators=100, 
+        n_estimators=150, 
         learning_rate=0.08, 
         max_depth=4, 
+        subsample=0.85,
         random_state=random_state
     )
 }

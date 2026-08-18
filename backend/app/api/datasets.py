@@ -2,8 +2,8 @@ import os
 import shutil
 import uuid
 import pandas as pd
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.database.models import Dataset, User, TrainedModel
@@ -241,6 +241,40 @@ def configure_dataset(
     db.commit()
     db.refresh(dataset)
     return dataset
+
+
+@router.get("/{dataset_id}/random-sample")
+def get_random_customer_sample(
+    dataset_id: int,
+    churn_type: Optional[str] = Query(None), # 'churn', 'loyal', or None (random)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if not dataset or not os.path.exists(dataset.filepath):
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    df = pd.read_csv(dataset.filepath)
+    tgt = dataset.target_column
+    
+    if churn_type and tgt and tgt in df.columns:
+        # Filter for churn or loyal rows
+        if churn_type == 'churn':
+            sub = df[df[tgt].astype(str).str.lower().isin(['yes', '1', 'true', 'churn'])]
+        else:
+            sub = df[df[tgt].astype(str).str.lower().isin(['no', '0', 'false', 'retained'])]
+        if not sub.empty:
+            sample_row = sub.sample(1).iloc[0].fillna("").to_dict()
+        else:
+            sample_row = df.sample(1).iloc[0].fillna("").to_dict()
+    else:
+        sample_row = df.sample(1).iloc[0].fillna("").to_dict()
+
+    return {
+        "dataset_id": dataset.id,
+        "sample": sample_row,
+        "actual_target": sample_row.get(tgt) if tgt else None
+    }
 
 
 @router.get("/{dataset_id}/analysis", response_model=DatasetAnalysisResponse)

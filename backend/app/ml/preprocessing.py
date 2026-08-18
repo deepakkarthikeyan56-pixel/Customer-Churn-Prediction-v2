@@ -95,11 +95,13 @@ class ChurnPreprocessor:
         self.numerical_cols = X.select_dtypes(include=[np.number]).columns.tolist()
         self.categorical_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
         
-        # Record unique categories and numeric ranges for dynamic UI input generation
+        # Ensure all categoricals are consistently strings
         for col in self.categorical_cols:
+            X[col] = X[col].astype(str).str.strip()
             self.categorical_unique_values[col] = [
                 str(v) for v in X[col].dropna().unique().tolist()
             ]
+            
         for col in self.numerical_cols:
             series = X[col].dropna()
             self.numerical_ranges[col] = {
@@ -171,26 +173,48 @@ class ChurnPreprocessor:
         return X_train_trans, X_test_trans, y_train.values, y_test.values, metadata
 
     def transform_single_input(self, input_dict: Dict[str, Any]) -> np.ndarray:
-        """Transforms a single customer input dictionary into preprocessed feature array."""
-        df_input = pd.DataFrame([input_dict])
+        """Transforms a single customer input dictionary into preprocessed feature array with robust type casting."""
+        clean_input = {}
         
-        # Ensure all required feature columns are present
+        # Auto-compute TotalCharges if not provided or 0
+        mc = float(input_dict.get('MonthlyCharges', 0) or 0)
+        ten = float(input_dict.get('tenure', 0) or 0)
+        if 'TotalCharges' not in input_dict or not input_dict.get('TotalCharges'):
+            input_dict['TotalCharges'] = round(mc * max(ten, 1), 2)
+            
+        # Match case-insensitive keys
+        input_lower_map = {str(k).strip().lower(): v for k, v in input_dict.items()}
+        
         for col in self.feature_columns:
-            if col not in df_input.columns:
-                if col in self.numerical_cols:
-                    df_input[col] = self.numerical_ranges.get(col, {}).get("median", 0.0)
+            col_l = col.strip().lower()
+            val = input_dict.get(col) if col in input_dict else input_lower_map.get(col_l)
+            
+            if col in self.numerical_cols:
+                try:
+                    num_val = float(val) if val is not None and str(val).strip() != '' else self.numerical_ranges.get(col, {}).get("median", 0.0)
+                except Exception:
+                    num_val = self.numerical_ranges.get(col, {}).get("median", 0.0)
+                clean_input[col] = num_val
+            else:
+                # Categorical
+                if val is not None and str(val).strip() != '':
+                    str_val = str(val).strip()
+                    # Try exact match or case-insensitive match from unique categories
+                    avail = self.categorical_unique_values.get(col, [])
+                    matched = next((a for a in avail if a.lower() == str_val.lower()), str_val)
+                    clean_input[col] = matched
                 else:
-                    df_input[col] = self.categorical_unique_values.get(col, ["Unknown"])[0]
-                    
-        # Match types
+                    clean_input[col] = self.categorical_unique_values.get(col, ["Unknown"])[0]
+
+        df_input = pd.DataFrame([clean_input])[self.feature_columns]
+        
+        # Explicit type coercion
         for col in self.numerical_cols:
-            try:
-                df_input[col] = pd.to_numeric(df_input[col], errors='coerce')
-            except Exception:
-                pass
-                
-        df_input_ordered = df_input[self.feature_columns]
-        return self.preprocessor_pipeline.transform(df_input_ordered)
+            df_input[col] = pd.to_numeric(df_input[col], errors='coerce').fillna(self.numerical_ranges.get(col, {}).get("median", 0.0))
+        for col in self.categorical_cols:
+            df_input[col] = df_input[col].astype(str)
+            
+        return self.preprocessor_pipeline.transform(df_input)
 
     def transform_batch(self, df: pd.DataFrame) -> Tuple[np.ndarray, pd.DataFrame]:
         """Transforms a batch DataFrame for bulk prediction."""
@@ -209,10 +233,9 @@ class ChurnPreprocessor:
                     df_features[col] = self.categorical_unique_values.get(col, ["Unknown"])[0]
                     
         for col in self.numerical_cols:
-            try:
-                df_features[col] = pd.to_numeric(df_features[col], errors='coerce')
-            except Exception:
-                pass
+            df_features[col] = pd.to_numeric(df_features[col], errors='coerce').fillna(self.numerical_ranges.get(col, {}).get("median", 0.0))
+        for col in self.categorical_cols:
+            df_features[col] = df_features[col].astype(str).str.strip()
                 
         df_ordered = df_features[self.feature_columns]
         return self.preprocessor_pipeline.transform(df_ordered), df_clean

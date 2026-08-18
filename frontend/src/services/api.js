@@ -78,6 +78,11 @@ export const datasetService = {
     const res = await api.get(`/api/datasets/${datasetId}/preview?limit=${limit}`);
     return res.data;
   },
+  getRandomSample: async (datasetId, churnType = null) => {
+    const url = churnType ? `/api/datasets/${datasetId}/random-sample?churn_type=${churnType}` : `/api/datasets/${datasetId}/random-sample`;
+    const res = await api.get(url);
+    return res.data;
+  },
   configureDataset: async (datasetId, config) => {
     const res = await api.post(`/api/datasets/${datasetId}/configure`, config);
     return res.data;

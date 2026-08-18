@@ -62,8 +62,8 @@ class DatasetAnalysisResponse(BaseModel):
     filename: str
     rows_count: int
     columns_count: int
-    target_column: Optional[str]
-    target_distribution: Optional[Dict[str, Any]]
+    target_column: Optional[str] = None
+    target_distribution: Optional[Any] = None
     numerical_stats: Dict[str, Dict[str, Any]]
     categorical_stats: Dict[str, Dict[str, Any]]
     charts_data: Dict[str, Any]
