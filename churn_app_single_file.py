@@ -608,6 +608,22 @@ def get_active_dataset(user: User = Depends(get_current_user), db: Session = Dep
         raise HTTPException(404, "No active dataset found.")
     return ds
 
+@app.get("/api/datasets/{dataset_id}/random-sample")
+def get_random_customer_sample(dataset_id: int, churn_type: Optional[str] = Query(None), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ds = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == user.id).first()
+    if not ds or not os.path.exists(ds.filepath): raise HTTPException(404, "Dataset not found")
+    df = pd.read_csv(ds.filepath)
+    tgt = ds.target_column
+    if churn_type and tgt and tgt in df.columns:
+        if churn_type == 'churn':
+            sub = df[df[tgt].astype(str).str.lower().isin(['yes', '1', 'true', 'churn'])]
+        else:
+            sub = df[df[tgt].astype(str).str.lower().isin(['no', '0', 'false', 'retained'])]
+        sample_row = sub.sample(1).iloc[0].fillna("").to_dict() if not sub.empty else df.sample(1).iloc[0].fillna("").to_dict()
+    else:
+        sample_row = df.sample(1).iloc[0].fillna("").to_dict()
+    return {"dataset_id": ds.id, "sample": sample_row, "actual_target": sample_row.get(tgt) if tgt else None}
+
 @app.get("/api/datasets/{dataset_id}/preview")
 def get_dataset_preview(dataset_id: int, limit: int = 50, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ds = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == user.id).first()
@@ -1102,19 +1118,47 @@ HTML_UI = """
 
       <!-- PREDICT CHURN TAB -->
       <section id="tab-predict" class="hidden space-y-6">
-        <div class="flex items-center justify-between">
-          <div><h2 class="text-2xl font-bold text-white font-heading">Customer Churn Predictor & Explainable AI</h2><p class="text-xs text-slate-400">Real-time inference with probability gauge and risk factor explanations</p></div>
-          <div class="flex gap-2">
-            <button onclick="fillPreset('high')" class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition">Load High-Risk Preset</button>
-            <button onclick="fillPreset('loyal')" class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition">Load Loyal Preset</button>
+        <div>
+          <h2 class="text-2xl font-bold text-white font-heading">Customer Churn Predictor & Explainable AI</h2>
+          <p class="text-xs text-slate-400">Real-time inference with probability gauge and risk factor explanations</p>
+        </div>
+
+        <!-- 1-CLICK AUTOFILL PROFILES BANNER -->
+        <div class="rounded-2xl border border-indigo-500/40 bg-gradient-to-r from-indigo-950/70 via-slate-900/90 to-blue-950/70 p-4 backdrop-blur-xl space-y-3 shadow-lg">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-bolt text-amber-400"></i> 1-Click Quick Autofill Profiles:
+            </span>
+            <span id="autofill-active-label" class="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full hidden"></span>
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <button type="button" onclick="fillPreset('extremeHighRisk', true)" class="rounded-xl border border-rose-500/40 bg-rose-500/20 px-3.5 py-2 font-bold text-rose-200 hover:bg-rose-500/40 transition shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-up text-rose-400"></i> Autofill High Risk Churner (85-98%)
+            </button>
+            <button type="button" onclick="fillPreset('loyalLowRisk', true)" class="rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-3.5 py-2 font-bold text-emerald-200 hover:bg-emerald-500/40 transition shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-down text-emerald-400"></i> Autofill Loyal Customer (5-15%)
+            </button>
+            <button type="button" onclick="fillPreset('moderateRisk', true)" class="rounded-xl border border-amber-500/40 bg-amber-500/20 px-3.5 py-2 font-bold text-amber-200 hover:bg-amber-500/40 transition shadow-sm">
+              Autofill Moderate Risk (35-50%)
+            </button>
+            <button type="button" onclick="fillFromDataset('churn')" class="rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3.5 py-2 font-bold text-indigo-200 hover:bg-indigo-500/40 transition shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-shuffle text-indigo-400"></i> Real Churned Row from Dataset
+            </button>
+            <button type="button" onclick="fillFromDataset('loyal')" class="rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3.5 py-2 font-bold text-indigo-200 hover:bg-indigo-500/40 transition shadow-sm flex items-center gap-1.5">
+              <i class="fa-solid fa-shuffle text-indigo-400"></i> Real Retained Row from Dataset
+            </button>
           </div>
         </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <!-- Form -->
-          <form onsubmit="handlePredictSubmit(event)" class="lg:col-span-7 glass-panel rounded-2xl p-6 space-y-4">
-            <h3 class="text-sm font-bold text-white pb-2 border-b border-slate-800">Customer Attributes</h3>
+          <form id="single-predict-form" onsubmit="handlePredictSubmit(event)" class="lg:col-span-7 glass-panel rounded-2xl p-6 space-y-4">
+            <h3 class="text-sm font-bold text-white pb-2 border-b border-slate-800 flex justify-between items-center">
+              <span>Customer Attributes</span>
+              <button type="button" onclick="loadPredictMeta()" class="text-xs text-slate-400 hover:text-white"><i class="fa-solid fa-rotate-left mr-1"></i>Reset</button>
+            </h3>
             <div id="dynamic-form-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs"></div>
-            <button type="submit" class="w-full rounded-xl bg-blue-600 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-500 transition shadow-lg"><i class="fa-solid fa-calculator mr-1.5"></i>Calculate Churn Probability</button>
+            <button type="submit" id="calc-btn" class="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-xs font-bold uppercase tracking-wider text-white hover:from-blue-500 hover:to-indigo-500 transition shadow-lg"><i class="fa-solid fa-calculator mr-1.5"></i>Calculate Churn Probability</button>
           </form>
           <!-- Results & XAI -->
           <div class="lg:col-span-5 space-y-4">
@@ -1413,30 +1457,85 @@ HTML_UI = """
         data.feature_columns.forEach(col => {
           if (data.categorical_cols.includes(col)) {
             const opts = data.categorical_unique_values[col] || ['Yes', 'No'];
-            html += `<div class="space-y-1"><label class="text-slate-400 capitalize">${col}</label><select name="${col}" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white">${opts.map(o => `<option value="${o}">${o}</option>`).join('')}</select></div>`;
+            html += `<div class="space-y-1"><label class="text-slate-400 capitalize">${col}</label><select name="${col}" id="field-${col}" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white">${opts.map(o => `<option value="${o}">${o}</option>`).join('')}</select></div>`;
           } else {
             const val = data.numerical_ranges[col] ? data.numerical_ranges[col].median : 20;
-            html += `<div class="space-y-1"><label class="text-slate-400 capitalize">${col}</label><input type="number" step="any" name="${col}" value="${val}" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white" /></div>`;
+            html += `<div class="space-y-1"><label class="text-slate-400 capitalize">${col}</label><input type="number" step="any" name="${col}" id="field-${col}" value="${val}" oninput="autoCalcTotal()" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white" /></div>`;
           }
         });
         container.innerHTML = html;
       } catch (e) { console.error(e); }
     }
 
-    function fillPreset(type) {
+    function autoCalcTotal() {
+      const m = parseFloat(document.getElementById('field-MonthlyCharges')?.value || 0);
+      const t = parseFloat(document.getElementById('field-tenure')?.value || 1);
+      const tot = document.getElementById('field-TotalCharges');
+      if (tot) {
+        tot.value = (m * Math.max(t, 1)).toFixed(2);
+      }
+    }
+
+    const presetProfiles = {
+      extremeHighRisk: {
+        label: 'Extreme High Churn Risk (Month-to-month, High Bill)',
+        data: { Contract: 'Month-to-month', tenure: 1, MonthlyCharges: 110.5, TotalCharges: 110.5, TechSupport: 'No', OnlineSecurity: 'No', InternetService: 'Fiber optic', PaymentMethod: 'Electronic check', PaperlessBilling: 'Yes', SeniorCitizen: 1 }
+      },
+      loyalLowRisk: {
+        label: 'Loyal Low Risk (2-Year Contract, 6+ Years)',
+        data: { Contract: 'Two year', tenure: 70, MonthlyCharges: 35.0, TotalCharges: 2450.0, TechSupport: 'Yes', OnlineSecurity: 'Yes', InternetService: 'DSL', PaymentMethod: 'Credit card (automatic)', PaperlessBilling: 'No', SeniorCitizen: 0 }
+      },
+      moderateRisk: {
+        label: 'Moderate Risk (1-Year Contract, 24 Mos)',
+        data: { Contract: 'One year', tenure: 24, MonthlyCharges: 75.0, TotalCharges: 1800.0, TechSupport: 'No', OnlineSecurity: 'No', InternetService: 'Fiber optic', PaymentMethod: 'Bank transfer (automatic)', PaperlessBilling: 'Yes', SeniorCitizen: 0 }
+      }
+    };
+
+    function fillPreset(type, autoRun = false) {
       if (!activeModelMeta) return;
-      const high = { Contract: 'Month-to-month', tenure: 2, MonthlyCharges: 95.0, TechSupport: 'No', OnlineSecurity: 'No', InternetService: 'Fiber optic', PaymentMethod: 'Electronic check' };
-      const loyal = { Contract: 'Two year', tenure: 60, MonthlyCharges: 45.0, TechSupport: 'Yes', OnlineSecurity: 'Yes', InternetService: 'DSL', PaymentMethod: 'Credit card (automatic)' };
-      const chosen = type === 'high' ? high : loyal;
-      for (const [k, v] of Object.entries(chosen)) {
-        const el = document.querySelector(`[name="${k}"]`);
+      const preset = presetProfiles[type];
+      if (!preset) return;
+
+      for (const [k, v] of Object.entries(preset.data)) {
+        const el = document.getElementById(`field-${k}`) || document.querySelector(`[name="${k}"]`);
         if (el) el.value = v;
       }
+      autoCalcTotal();
+      const label = document.getElementById('autofill-active-label');
+      if (label) {
+        label.innerText = 'Active: ' + preset.label;
+        label.classList.remove('hidden');
+      }
+      if (autoRun) {
+        document.getElementById('calc-btn').click();
+      }
+    }
+
+    async function fillFromDataset(churnType) {
+      if (!activeModelMeta) return;
+      try {
+        const activeDs = await fetch('/api/datasets/active', { headers: getAuthHeaders() }).then(r => r.json());
+        const sampleRes = await fetch(`/api/datasets/${activeDs.id}/random-sample?churn_type=${churnType}`, { headers: getAuthHeaders() }).then(r => r.json());
+        const s = sampleRes.sample;
+        activeModelMeta.feature_columns.forEach(col => {
+          if (s[col] !== undefined && s[col] !== '') {
+            const el = document.getElementById(`field-${col}`) || document.querySelector(`[name="${col}"]`);
+            if (el) el.value = s[col];
+          }
+        });
+        autoCalcTotal();
+        const label = document.getElementById('autofill-active-label');
+        if (label) {
+          label.innerText = churnType === 'churn' ? 'Real Churned Record from Dataset' : 'Real Retained Record from Dataset';
+          label.classList.remove('hidden');
+        }
+        document.getElementById('calc-btn').click();
+      } catch (e) { alert('Failed to fetch dataset record'); }
     }
 
     async function handlePredictSubmit(e) {
       e.preventDefault();
-      const form = e.target;
+      const form = document.getElementById('single-predict-form') || e.target;
       const feats = {};
       new FormData(form).forEach((v, k) => {
         feats[k] = isNaN(v) ? v : parseFloat(v);
@@ -1453,7 +1552,7 @@ HTML_UI = """
         document.getElementById('res-churn-prob').innerText = pred.churn_probability + '%';
         const badge = document.getElementById('res-risk-badge');
         badge.innerText = pred.risk_level;
-        badge.className = 'inline-block px-3 py-1 text-xs font-bold uppercase rounded-full ' + (pred.risk_level === 'High Risk' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30');
+        badge.className = 'inline-block px-3 py-1 text-xs font-bold uppercase rounded-full ' + (pred.risk_level === 'High Risk' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : pred.risk_level === 'Medium Risk' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30');
 
         document.getElementById('res-factors-list').innerHTML = pred.top_factors.map(f => `
           <div class="flex justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
